@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhysicsAssi</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        button {
+            padding: 20px 40px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #b0b0b0;
+            cursor: not-allowed;
+        }
+        audio {
+            margin-top: 20px;
+            display: none;
+        }
+        .popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .content-container {
+            margin-top: 20px;
+            display: none;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #fff;
+            width: 300px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .content-container .content-toggle {
+            display: flex;
+            justify-content: flex-end;
+            cursor: pointer;
+            padding: 5px;
+            background-color: #f1f1f1;
+            border-bottom: 1px solid #ddd;
+        }
+        .content-container .content-toggle:hover {
+            background-color: #e1e1e1;
+        }
+        .content-container .content {
+            display: none;
+            padding: 10px;
+        }
+        #clearHistoryButton {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: #4CAF50;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        #clearHistoryButton:hover {
+            background-color: #45a049;
+        }
+        #clearHistoryButton::after {
+            content: "▲";
+            font-size: 24px;
+            display: block;
+            margin-top: -5px;
+        }
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            padding: 10px 0;
+            font-size: 14px;
+            border-top: 1px solid #ddd;
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <button id="recordButton" onclick="toggleRecording()">Ask Something</button>
+    <audio id="responseAudio" controls></audio>
+    <div id="popup" class="popup">The response might take 1 to 10 minutes.</div>
+    <div id="contentContainer" class="content-container">
+        <div id="contentToggle" class="content-toggle">&#x25BC;</div>
+        <div id="content" class="content"></div>
+    </div>
+    <button id="clearHistoryButton" onclick="clearHistory()"></button>
+
+    <footer id="footer">
+        Made for Phymulator - From V.V DAV, Bhargav Raj
+    </footer>
+
+    <script>
+        let isRecording = false;
+        let mediaRecorder;
+        let audioChunks = [];
+        let isProcessing = false;  // Added to track processing state
+
+        async function toggleRecording() {
+            const recordButton = document.getElementById('recordButton');
+            const clearHistoryButton = document.getElementById('clearHistoryButton');
+            const responseAudio = document.getElementById('responseAudio');
+            const popup = document.getElementById('popup');
+            const contentContainer = document.getElementById('contentContainer');
+            const content = document.getElementById('content');
+
+            if (!isRecording) {
+                isRecording = true;
+                recordButton.innerText = 'Send To PhysicsAssi';
+                clearHistoryButton.disabled = true;  // Disable the clear history button
+                
+                // Remove the previous response audio and content
+                responseAudio.style.display = 'none';
+                responseAudio.src = '';
+                contentContainer.style.display = 'none';
+                content.innerText = '';
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioBuffer = await audioBlob.arrayBuffer();
+                    
+                    // Show popup notification
+                    showPopup();
+
+                    fetch('http://127.0.0.1:8000/get_voice', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/octet-stream'
+                        },
+                        body: audioBuffer
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log(data);
+                        // Fetch and play the response audio
+                        fetchResponseAudio();
+                        // Display the content
+                        content.innerText = data.content;
+                        contentContainer.style.display = 'block';
+                        // Re-enable buttons after processing
+                        isProcessing = false;
+                        recordButton.disabled = false;
+                        clearHistoryButton.disabled = false;
+                    })
+                    .catch(error => console.error('Error:', error));
+
+                    audioChunks = [];
+                };
+
+                mediaRecorder.start();
+            } else {
+                isRecording = false;
+                recordButton.innerText = 'Ask Something';
+                mediaRecorder.stop();
+                // Disable buttons while processing
+                isProcessing = true;
+                recordButton.disabled = true;
+                clearHistoryButton.disabled = true;
+            }
+        }
+
+        function showPopup(message) {
+            const popup = document.getElementById('popup');
+            popup.innerText = message || 'The response might take 1 to 10 minutes.';
+            popup.style.display = 'block';
+            setTimeout(() => {
+                popup.style.display = 'none';
+            }, 2500); 
+        }
+
+        function fetchResponseAudio() {
+            fetch('http://127.0.0.1:8000/get_response_audio')
+                .then(response => {
+                    if (response.ok) {
+                        return response.blob();
+                    } else {
+                        throw new Error('Response audio not found');
+                    }
+                })
+                .then(blob => {
+                    const audioUrl = URL.createObjectURL(blob);
+                    const responseAudio = document.getElementById('responseAudio');
+                    responseAudio.src = audioUrl;
+                    responseAudio.style.display = 'block';
+                    responseAudio.play();
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Toggle content visibility
+        document.getElementById('contentToggle').addEventListener('click', () => {
+            const content = document.getElementById('content');
+            const contentToggle = document.getElementById('contentToggle');
+            if (content.style.display === 'block') {
+                content.style.display = 'none';
+                contentToggle.innerHTML = '&#x25BC;';
+            } else {
+                content.style.display = 'block';
+                contentToggle.innerHTML = '&#x25B2;';
+            }
+        });
+
+        function clearHistory() {
+            fetch('http://127.0.0.1:8000/clear_history', {
+                method: 'POST'
+            })
+            .then(response => response.text())
+            .then(message => {
+                showPopup('History has been cleared');
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>

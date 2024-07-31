@@ -24,7 +24,7 @@ PhysicsAssi is your personal assistant for helping you with physics questions an
 
 ## Credits
 
-- **From**: V.V D.A.V Vikaspuri
+- **From**: V.V D.A.V
 - **By**: TechPowerB
 
 ---
